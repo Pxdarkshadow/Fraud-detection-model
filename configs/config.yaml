@@ -1,0 +1,35 @@
+# Fraud Detection — Training Configuration
+# Reference file. Code reads from src/fraud_detection/config.py.
+
+dataset:
+  path: data/creditcard.csv
+  target: Class
+  features:
+    - Time
+    - V1-V28  # 28 PCA-transformed anonymized features
+    - Amount
+
+split:
+  test_ratio: 0.15
+  val_ratio: 0.15
+  method: chronological  # split on Time column
+
+training:
+  seed: 42
+  model: LightGBM
+  params:
+    objective: binary
+    metric: auc
+    learning_rate: 0.05
+    num_leaves: 63
+    max_depth: 8
+    min_child_samples: 100
+    feature_fraction: 0.8
+    bagging_fraction: 0.8
+    bagging_freq: 5
+  early_stopping_rounds: 50
+  num_boost_round: 1000
+
+output:
+  model_path: models/fraud_model.txt
+  threshold_path: models/threshold.txt

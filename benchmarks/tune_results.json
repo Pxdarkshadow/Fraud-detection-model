@@ -1,0 +1,202 @@
+{
+  "spw_base": 27.43,
+  "results": [
+    {
+      "config": {
+        "learning_rate": 0.01,
+        "num_leaves": 127,
+        "max_depth": -1,
+        "min_data_in_leaf": 200
+      },
+      "spw": 27.4,
+      "trees": 1375,
+      "secs": 76.2,
+      "val_ap": 0.5713,
+      "val_auc": 0.9248,
+      "t_star": 0.71,
+      "f1_opt": 0.5443,
+      "p_opt": 0.5908,
+      "r_opt": 0.5046,
+      "f1_0.5": 0.4686
+    },
+    {
+      "config": {
+        "scale_pos_weight": 15
+      },
+      "spw": 15,
+      "trees": 1030,
+      "secs": 59.5,
+      "val_ap": 0.5685,
+      "val_auc": 0.9261,
+      "t_star": 0.66,
+      "f1_opt": 0.541,
+      "p_opt": 0.6171,
+      "r_opt": 0.4816,
+      "f1_0.5": 0.5066
+    },
+    {
+      "config": {
+        "learning_rate": 0.02,
+        "num_leaves": 96,
+        "min_data_in_leaf": 100,
+        "feature_fraction": 0.7,
+        "bagging_fraction": 0.7
+      },
+      "spw": 27.4,
+      "trees": 726,
+      "secs": 35.6,
+      "val_ap": 0.568,
+      "val_auc": 0.9234,
+      "t_star": 0.77,
+      "f1_opt": 0.5409,
+      "p_opt": 0.6545,
+      "r_opt": 0.4609,
+      "f1_0.5": 0.457
+    },
+    {
+      "config": {
+        "feature_fraction": 0.6,
+        "bagging_fraction": 0.7
+      },
+      "spw": 27.4,
+      "trees": 275,
+      "secs": 18.7,
+      "val_ap": 0.5606,
+      "val_auc": 0.9182,
+      "t_star": 0.73,
+      "f1_opt": 0.5363,
+      "p_opt": 0.5984,
+      "r_opt": 0.4859,
+      "f1_0.5": 0.4571
+    },
+    {
+      "config": {
+        "scale_pos_weight": 40
+      },
+      "spw": 40,
+      "trees": 1042,
+      "secs": 59.1,
+      "val_ap": 0.5603,
+      "val_auc": 0.9238,
+      "t_star": 0.81,
+      "f1_opt": 0.5361,
+      "p_opt": 0.6236,
+      "r_opt": 0.4701,
+      "f1_0.5": 0.3949
+    },
+    {
+      "config": {
+        "num_leaves": 127,
+        "max_depth": -1
+      },
+      "spw": 27.4,
+      "trees": 196,
+      "secs": 15.1,
+      "val_ap": 0.5595,
+      "val_auc": 0.9191,
+      "t_star": 0.72,
+      "f1_opt": 0.5349,
+      "p_opt": 0.5758,
+      "r_opt": 0.4993,
+      "f1_0.5": 0.4465
+    },
+    {
+      "config": {
+        "learning_rate": 0.01,
+        "min_data_in_leaf": 300,
+        "lambda_l1": 10,
+        "lambda_l2": 20
+      },
+      "spw": 27.4,
+      "trees": 1045,
+      "secs": 51.8,
+      "val_ap": 0.557,
+      "val_auc": 0.9225,
+      "t_star": 0.79,
+      "f1_opt": 0.5326,
+      "p_opt": 0.643,
+      "r_opt": 0.4546,
+      "f1_0.5": 0.4159
+    },
+    {
+      "config": {
+        "min_data_in_leaf": 200,
+        "lambda_l1": 5,
+        "lambda_l2": 10
+      },
+      "spw": 27.4,
+      "trees": 195,
+      "secs": 15.3,
+      "val_ap": 0.5561,
+      "val_auc": 0.9182,
+      "t_star": 0.78,
+      "f1_opt": 0.5309,
+      "p_opt": 0.6405,
+      "r_opt": 0.4533,
+      "f1_0.5": 0.4356
+    },
+    {
+      "config": {
+        "learning_rate": 0.02,
+        "num_leaves": 127,
+        "max_depth": -1,
+        "min_data_in_leaf": 150,
+        "lambda_l1": 5,
+        "lambda_l2": 10
+      },
+      "spw": 27.4,
+      "trees": 391,
+      "secs": 25.5,
+      "val_ap": 0.5474,
+      "val_auc": 0.921,
+      "t_star": 0.78,
+      "f1_opt": 0.5296,
+      "p_opt": 0.6274,
+      "r_opt": 0.4583,
+      "f1_0.5": 0.4184
+    },
+    {
+      "config": {
+        "learning_rate": 0.05
+      },
+      "spw": 27.4,
+      "trees": 575,
+      "secs": 15.9,
+      "val_ap": 0.5467,
+      "val_auc": 0.912,
+      "t_star": 0.77,
+      "f1_opt": 0.5251,
+      "p_opt": 0.5957,
+      "r_opt": 0.4694,
+      "f1_0.5": 0.41
+    },
+    {
+      "config": {},
+      "spw": 27.4,
+      "trees": 655,
+      "secs": 17.2,
+      "val_ap": 0.5381,
+      "val_auc": 0.9109,
+      "t_star": 0.8,
+      "f1_opt": 0.5224,
+      "p_opt": 0.625,
+      "r_opt": 0.4487,
+      "f1_0.5": 0.3796
+    },
+    {
+      "config": {
+        "learning_rate": 0.01
+      },
+      "spw": 27.4,
+      "trees": 1499,
+      "secs": 35.9,
+      "val_ap": 0.5347,
+      "val_auc": 0.9091,
+      "t_star": 0.81,
+      "f1_opt": 0.5147,
+      "p_opt": 0.644,
+      "r_opt": 0.4287,
+      "f1_0.5": 0.3676
+    }
+  ]
+}
