@@ -88,6 +88,13 @@ fraud-detection-model/
 
 ## 3. Dataset and features
 
+The Model uses the real ULB Credit Card Fraud dataset:
+
+- 284,807 real European card transactions.
+- PCA-anonymized features.
+- Severe class imbalance.
+- No synthetic fraud generation in the reported training/evaluation run.
+- 
 The model expects these 30 columns:
 
 ```text
@@ -318,64 +325,3 @@ A probability is a model score, not a guarantee that a transaction is fraudulent
 - The reported metrics should be regenerated whenever code, dependencies, data, feature handling, or configuration changes.
 
 ---
-
-## 10. Dataset history
-
-The project originally experimented with PaySim, a synthetic financial transaction dataset. That experiment was not used for the reported final results because its fraud-generation rule produced an unrealistically easy classification problem.
-
-The reported model uses the real ULB Credit Card Fraud dataset:
-
-- 284,807 real European card transactions.
-- PCA-anonymized features.
-- Severe class imbalance.
-- No synthetic fraud generation in the reported training/evaluation run.
-
-Other candidate datasets were not included in the final pipeline because of access or download limitations.
-
----
-
-## 11. Limitations
-
-This project is a reproducible ML prototype, not a complete production fraud platform.
-
-Production capabilities still missing include:
-
-- Real-time feature store or Redis integration.
-- Rules engine and policy orchestration.
-- REST/gRPC serving layer.
-- Authentication and authorization.
-- Model registry and artifact versioning.
-- Data-drift and concept-drift monitoring.
-- Automated retraining.
-- Alerting and incident response.
-- Audit logging and decision traceability.
-- Human review workflow.
-- Calibration monitoring.
-- Multi-dataset validation.
-- Shadow/canary deployment.
-- Concurrent load testing.
-- End-to-end p99 latency measurement.
-- Privacy, compliance, and security controls.
-
-The model should not be used to make unattended financial decisions.
-
----
-
-## 12. Future improvements
-
-1. Add a versioned model registry.
-2. Build a low-latency inference API.
-3. Add request validation and structured audit logs.
-4. Benchmark concurrent requests and full end-to-end latency.
-5. Add drift monitoring and scheduled retraining.
-6. Evaluate calibration and threshold trade-offs against business costs.
-7. Validate on additional real-world fraud datasets.
-8. Add explainability using a tested, latency-bounded method.
-9. Add CI tests, dependency pinning, and reproducible build metadata.
-10. Add security, privacy, and deployment documentation.
-
----
-
-## Dataset and license
-
-Use the code and dataset according to their respective licenses and terms. The ULB dataset is commonly distributed through the Kaggle Credit Card Fraud Detection dataset listing.
