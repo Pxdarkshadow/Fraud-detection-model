@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Package imports cleanly
+        run: PYTHONPATH=src python -c "from fraud_detection import predict; print('import ok')"
+
+      - name: Run test suite
+        # Model tests skip when data/creditcard.csv + models/fraud_model.txt are absent
+        # (both are gitignored and Kaggle-auth-gated, so CI never downloads them).
+        run: python scripts/run_tests.py

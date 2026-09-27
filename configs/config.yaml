@@ -11,8 +11,8 @@ dataset:
 
 split:
   test_ratio: 0.15
-  val_ratio: 0.15
-  method: chronological  # split on Time column
+  val_ratio: 0.30
+  method: chronological  # split on Time column; stratified holdout within the val band (see pipeline.py)
 
 training:
   seed: 42
@@ -20,15 +20,16 @@ training:
   params:
     objective: binary
     metric: auc
-    learning_rate: 0.05
-    num_leaves: 63
-    max_depth: 8
-    min_child_samples: 100
+    learning_rate: 0.02
+    num_leaves: 96
+    max_depth: -1
+    min_child_samples: 50
     feature_fraction: 0.8
-    bagging_fraction: 0.8
-    bagging_freq: 5
-  early_stopping_rounds: 50
-  num_boost_round: 1000
+    bagging_fraction: 0.9
+    bagging_freq: 1
+    scale_pos_weight: 10
+  early_stopping_rounds: 300
+  num_boost_round: 3000
 
 output:
   model_path: models/fraud_model.txt
