@@ -16,3 +16,4 @@ out.csv
 reports/*.csv
 reports/*.json
 .benchmarks/
+data/*.csv

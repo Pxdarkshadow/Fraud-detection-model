@@ -22,7 +22,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-from .config import INPUT_COLS, DATA_PATH
+from .config import NUMERIC_FEATURES, DATA_PATH
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -55,7 +55,8 @@ def check_drift(
         - drifted_features: [feature, ...]  (only those >= threshold)
         - overall_drift: bool (any drifted)
     """
-    features = features or INPUT_COLS
+    # ponytail: quantile PSI only on numeric cols; categoricals need a separate chi2 PSI.
+    features = features or NUMERIC_FEATURES
     # align on shared columns
     features = [f for f in features if f in reference.columns and f in sample.columns]
 
@@ -83,7 +84,7 @@ def check_drift(
 # CLI
 # ---------------------------------------------------------------------------
 def main():
-    ap = argparse.ArgumentParser(description="Drift check (PSI) for credit-card features")
+    ap = argparse.ArgumentParser(description="Drift check (PSI) for numeric fraud features")
     ap.add_argument("--reference", default=str(DATA_PATH), help="Reference CSV (default: training data)")
     ap.add_argument("--sample", required=True, help="New-sample CSV to compare against reference")
     ap.add_argument("--threshold", type=float, default=DRIFT_THRESHOLD, help="Per-feature PSI drift threshold")

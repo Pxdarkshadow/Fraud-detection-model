@@ -2,9 +2,8 @@
 
 Single file: load -> features -> split -> train -> compare -> evaluate -> benchmark
 
-Dataset: ULB/Kaggle credit-card fraud (284,807 rows, 492 frauds ~0.17%).
-  - V1..V28 are PCA-transformed anonymized features.
-  - Time = seconds elapsed since first transaction in the dataset (not wall-clock).
+Dataset: data/fraud_merged.csv (Sparkov + BankSim + FDH Handbook, ~90k rows, 35% fraud).
+  - Human-readable features: amount, category, merchant, location, time, demographics.
   - Threshold selection: fitted on VALIDATION only. Test set never touches threshold logic.
 
 Explanations:
@@ -36,6 +35,7 @@ from .config import (
     RANDOM_SEED,
     TARGET,
     FEATURES,
+    CATEGORICAL_COLS,
     MODEL_DIR,
     MODEL_PATH,
     THRESHOLD_PATH,
@@ -61,28 +61,58 @@ def load_data():
 # ---------------------------------------------------------------------------
 
 def engineer_features(df):
-    """Return features only — no derived columns."""
+    """Enrich df with log-amount and distance, convert categorical types for LGBM."""
+    df = df.copy()
+
+    if "amount" in df.columns:
+        df["amount_log1p"] = np.log1p(df["amount"])
+
+    if all(x in df.columns for x in ["lat", "long", "merch_lat", "merch_long"]):
+        # ponytail: naive euclidean to avoid haversine overhead. Fine for local distances.
+        dlat = df["lat"] - df["merch_lat"]
+        dlon = (df["long"] - df["merch_long"]) * np.cos(np.radians(df["lat"].fillna(0)))
+        df["distance_km"] = np.sqrt(dlat**2 + dlon**2) * 111.0
+        # fill unknown locations with median dataset distance to avoid NaNs blowing up predict
+        df["distance_km"] = df["distance_km"].fillna(df["distance_km"].median())
+
+    for col in CATEGORICAL_COLS:
+        if col in df.columns:
+            df[col] = df[col].astype("category")
+
     return df
 
 
 # ---------------------------------------------------------------------------
-# 3. CHRONOLOGICAL SPLIT (on Time = elapsed seconds)
+# 3. CHRONOLOGICAL SPLIT (on tx_datetime)
 # ---------------------------------------------------------------------------
 
 def chrono_split(df):
-    max_time = df["Time"].max()
-    test_cutoff = max_time * (1 - TEST_RATIO)
-    val_cutoff = max_time * (1 - TEST_RATIO - VAL_RATIO)
+    """Chronologically split merged dataset.
 
-    train = df[df["Time"] < val_cutoff].copy()
-    band = df[(df["Time"] >= val_cutoff) & (df["Time"] < test_cutoff)]
-    test = df[df["Time"] >= test_cutoff].copy()
+    The merged CSV contains a ``tx_datetime`` column (ISO‑8601 strings).
+    We sort by this timestamp, then allocate the newest portion to the test set,
+    the next slice to a validation band (which is further stratified), and the
+    remainder to the training set.
+    """
+    # Ensure datetime type for reliable ordering.
+    df = df.copy()
+    df["tx_datetime"] = pd.to_datetime(df["tx_datetime"], errors="coerce")
+    df = df.sort_values("tx_datetime").reset_index(drop=True)
 
-    # Stratified holdout *within* the chronological val band: val stays time-local
-    # (no test leakage, never shuffles future rows forward) but sampling on Class
-    # across a wider window captures more frauds.
+    max_idx = len(df)
+    test_cutoff = int(max_idx * (1 - TEST_RATIO))
+    val_cutoff = int(max_idx * (1 - TEST_RATIO - VAL_RATIO))
+
+    train = df.iloc[:val_cutoff].copy()
+    band = df.iloc[val_cutoff:test_cutoff].copy()
+    test = df.iloc[test_cutoff:].copy()
+
+    # Stratified holdout *within* the chronological validation band.
     _, val = train_test_split(
-        band, test_size=0.5, random_state=RANDOM_SEED, stratify=band[TARGET]
+        band,
+        test_size=0.5,
+        random_state=RANDOM_SEED,
+        stratify=band[TARGET] if TARGET in band.columns else None,
     )
     val = val.copy()
     train = pd.concat([train, band.drop(val.index)])
@@ -101,8 +131,9 @@ def train_lightgbm(train, val, feature_cols):
     X_train, y_train = train[feature_cols], train[TARGET]
     X_val, y_val = val[feature_cols], val[TARGET]
 
-    dtrain = lgb.Dataset(X_train, y_train)
-    dval = lgb.Dataset(X_val, y_val)
+    cat_cols = [c for c in CATEGORICAL_COLS if c in feature_cols]
+    dtrain = lgb.Dataset(X_train, y_train, categorical_feature=cat_cols)
+    dval = lgb.Dataset(X_val, y_val, categorical_feature=cat_cols)
 
     params = {
         "objective": "binary",
@@ -114,7 +145,7 @@ def train_lightgbm(train, val, feature_cols):
         "feature_fraction": 0.8,
         "bagging_fraction": 0.9,
         "bagging_freq": 1,
-        "scale_pos_weight": 10,  # modest weight to keep recall up
+        # dataset is 35% fraud — no artificial pos-weight needed
         "seed": RANDOM_SEED,
         "verbose": -1,
     }
@@ -138,7 +169,10 @@ def train_xgboost(train, val, feature_cols):
     X_train, y_train = train[feature_cols], train[TARGET]
     X_val, y_val = val[feature_cols], val[TARGET]
 
-    # Scale_pos_weight mirrors the LightGBM choice to keep classification behavior comparable.
+    X_train = _xgb_encode(X_train)
+    X_val = _xgb_encode(X_val)
+
+    # dataset is 35% fraud — no artificial pos-weight needed
     params = {
         "objective": "binary:logistic",
         "eval_metric": "auc",
@@ -147,7 +181,6 @@ def train_xgboost(train, val, feature_cols):
         "min_child_weight": 50,
         "subsample": 0.9,
         "colsample_bytree": 0.8,
-        "scale_pos_weight": 10,
         "tree_method": "hist",
         "seed": RANDOM_SEED,
         "verbosity": 0,
@@ -207,11 +240,20 @@ def _binary_prf1(y_true, y_pred):
     return precision, recall, f1, cm
 
 
+def _xgb_encode(X):
+    """Integer-encode category columns for XGBoost DMatrix."""
+    X = X.copy()
+    for c in CATEGORICAL_COLS:
+        if c in X.columns:
+            X[c] = X[c].astype("category").cat.codes
+    return X
+
+
 def predict_proba(model, X):
     # LightGBM Booster works directly with DataFrames.
-    # XGBoost Booster needs a DMatrix for stable behavior.
+    # XGBoost Booster needs integer-encoded DMatrix.
     if isinstance(model, xgb.Booster):
-        return model.predict(xgb.DMatrix(X))
+        return model.predict(xgb.DMatrix(_xgb_encode(X)))
     return model.predict(X)
 
 

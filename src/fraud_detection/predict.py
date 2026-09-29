@@ -14,6 +14,8 @@ import xgboost as xgb
 
 from .config import (
     INPUT_COLS,
+    FEATURES,
+    CATEGORICAL_COLS,
     CLASS_COL,
     MODEL_PATH,
     THRESHOLD_PATH,
@@ -69,16 +71,37 @@ def validate_input(df):
     missing = [c for c in INPUT_COLS if c not in df.columns]
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
-    nulls = [c for c in INPUT_COLS if df[c].isna().any()]
-    if nulls:
-        raise ValueError(f"NaN found in required columns: {nulls}")
+    # ponytail: drop global NaN check. Sparse logs have missing locations/demographics.
 
 
 def engineer_features(df):
     df = df.copy()
     if CLASS_COL in df.columns:
         df.drop(columns=[CLASS_COL], inplace=True)
+
+    if "amount" in df.columns:
+        df["amount_log1p"] = np.log1p(df["amount"])
+
+    if all(x in df.columns for x in ["lat", "long", "merch_lat", "merch_long"]):
+        dlat = df["lat"] - df["merch_lat"]
+        dlon = (df["long"] - df["merch_long"]) * np.cos(np.radians(df["lat"].fillna(0)))
+        df["distance_km"] = np.sqrt(dlat**2 + dlon**2) * 111.0
+        df["distance_km"] = df["distance_km"].fillna(0.0)
+
+    for col in CATEGORICAL_COLS:
+        if col in df.columns:
+            df[col] = df[col].astype("category")
+
     return df
+
+
+def _xgb_encode(X, feature_cols):
+    """Encode categories to integers for XGBoost; returns a new DataFrame slice."""
+    X = X[feature_cols].copy()
+    for c in X.columns:
+        if isinstance(X[c].dtype, pd.CategoricalDtype) or str(X[c].dtype) == "category":
+            X[c] = X[c].cat.codes
+    return X
 
 
 def predict(df, threshold=None, model=None):
@@ -90,9 +113,9 @@ def predict(df, threshold=None, model=None):
     threshold = default_threshold() if threshold is None else threshold
 
     if isinstance(model, xgb.Booster):
-        probs = model.predict(xgb.DMatrix(df[INPUT_COLS]))
+        probs = model.predict(xgb.DMatrix(_xgb_encode(df, FEATURES)))
     else:
-        probs = model.predict(df[INPUT_COLS])
+        probs = model.predict(df[FEATURES])
 
     df["fraud_probability"] = probs
     df["prediction"] = (probs >= threshold).astype(int)
@@ -141,18 +164,20 @@ def _explain_shap_top_k(model, X: pd.DataFrame, feature_cols, top_k=5):
 
 
 def explain_predictions(model, df: pd.DataFrame, top_k=5, feature_cols=None):
-    feature_cols = feature_cols or INPUT_COLS
+    feature_cols = feature_cols or FEATURES
     df = engineer_features(df)
 
     t0 = time.perf_counter()
     if isinstance(model, xgb.Booster):
-        _ = model.predict(xgb.DMatrix(df[feature_cols]))
+        _ = model.predict(xgb.DMatrix(_xgb_encode(df, feature_cols)))
+        X_shap = _xgb_encode(df, feature_cols)
     else:
         _ = model.predict(df[feature_cols])
+        X_shap = df[feature_cols]
     inference_ms = (time.perf_counter() - t0) * 1000
 
     t0 = time.perf_counter()
-    explanations = _explain_shap_top_k(model, df[feature_cols], feature_cols, top_k=top_k)
+    explanations = _explain_shap_top_k(model, X_shap, feature_cols, top_k=top_k)
     explanation_ms = (time.perf_counter() - t0) * 1000
 
     top_features = []
@@ -204,9 +229,9 @@ def main():
         # Inference (timed separately when --explain is enabled)
         t0 = time.perf_counter()
         if isinstance(model, xgb.Booster):
-            probs = model.predict(xgb.DMatrix(df[INPUT_COLS]))
+            probs = model.predict(xgb.DMatrix(_xgb_encode(df, FEATURES)))
         else:
-            probs = model.predict(df[INPUT_COLS])
+            probs = model.predict(df[FEATURES])
         inference_ms = (time.perf_counter() - t0) * 1000
 
         df["fraud_probability"] = probs
@@ -216,7 +241,7 @@ def main():
             # ponytail: hard cap to keep SHAP under the <100ms target.
             if len(df) > 50:
                 raise ValueError("--explain supports up to 50 rows to keep SHAP fast")
-            expl = explain_predictions(model, df, top_k=args.top_k, feature_cols=INPUT_COLS)
+            expl = explain_predictions(model, df, top_k=args.top_k, feature_cols=FEATURES)
             df["explain_top_features"] = expl["explain_top_features"]
             df["explain_top_shap_values"] = expl["explain_top_shap_values"]
             print(f"Latency: inference={inference_ms:.2f}ms explanation={expl['explanation_ms']:.2f}ms")

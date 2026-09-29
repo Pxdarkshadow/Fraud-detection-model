@@ -2,35 +2,45 @@
 # Reference file. Code reads from src/fraud_detection/config.py.
 
 dataset:
-  path: data/creditcard.csv
-  target: Class
+  path: data/fraud_merged.csv
+  target: is_fraud
   features:
-    - Time
-    - V1-V28  # 28 PCA-transformed anonymized features
-    - Amount
+    - amount
+    - hour
+    - day_of_week
+    - is_weekend
+    - lat
+    - long
+    - merch_lat
+    - merch_long
+    - category
+    - merchant
+    - gender
+    - age_bucket
+    - city
+    - state
+    - channel
+    - source
 
 split:
   test_ratio: 0.15
   val_ratio: 0.30
-  method: chronological  # split on Time column; stratified holdout within the val band (see pipeline.py)
+  method: chronological  # split on tx_datetime column; stratified holdout within the val band (see pipeline.py)
 
 training:
   seed: 42
-  model: LightGBM
+  models:
+    - LightGBM
+    - XGBoost
   params:
     objective: binary
     metric: auc
     learning_rate: 0.02
-    num_leaves: 96
-    max_depth: -1
-    min_child_samples: 50
-    feature_fraction: 0.8
-    bagging_fraction: 0.9
-    bagging_freq: 1
-    scale_pos_weight: 10
+    # scale_pos_weight removed because data is already 35% rebalanced
   early_stopping_rounds: 300
-  num_boost_round: 3000
 
 output:
   model_path: models/fraud_model.txt
   threshold_path: models/threshold.txt
+  xgb_model_path: models/fraud_model_xgboost.json
+  xgb_threshold_path: models/threshold_xgboost.txt

@@ -32,9 +32,11 @@ def _is_finite_number(x: float) -> bool:
     return isinstance(x, (int, float)) and math.isfinite(float(x))
 
 
-def ask_float(label: str, *, allow_negative: bool = True) -> float:
+def ask_value(label: str, is_categorical: bool, allow_negative: bool = True):
     while True:
         raw = input(f"{label}: ").strip()
+        if is_categorical:
+            return raw
         try:
             v = float(raw)
         except ValueError:
@@ -159,18 +161,16 @@ def option_benchmark() -> None:
 
 def option_predict_custom() -> None:
     import pandas as pd
+    from fraud_detection.config import CATEGORICAL_COLS
+    from fraud_detection.predict import predict
 
     print("\nEnter values for the required features.")
-    print("(All inputs are used as-is; invalid numbers are rejected.)\n")
 
-    row: dict[str, float] = {}
+    row = {}
     for col in INPUT_COLS:
-        allow_negative = True
-        if col == "Time":
-            allow_negative = False
-        if col == "Amount":
-            allow_negative = False
-        row[col] = ask_float(col, allow_negative=allow_negative)
+        is_categorical = col in CATEGORICAL_COLS
+        allow_negative = col not in ("amount", "hour")
+        row[col] = ask_value(col, is_categorical, allow_negative=allow_negative)
 
     df = pd.DataFrame([row])
     validate_input(df)
@@ -183,12 +183,15 @@ def option_predict_custom() -> None:
     wall_start = time.perf_counter()
 
     infer_start = time.perf_counter()
-    probs = model.predict(df[INPUT_COLS])
-    prob = float(probs[0])
-    pred = int(prob >= threshold)
+    res_df = predict(df, threshold=threshold, model=model)
+    prob = float(res_df["fraud_probability"].iloc[0])
+    pred = int(res_df["prediction"].iloc[0])
     infer_ms = (time.perf_counter() - infer_start) * 1000.0
 
-    shap_top, shap_ms, shap_used = top_features_from_shap(model, df, INPUT_COLS)
+    from fraud_detection.predict import engineer_features
+    shap_top, shap_ms, shap_used = top_features_from_shap(
+        model, engineer_features(df.copy()), FEATURES
+    )
 
     total_ms = (time.perf_counter() - wall_start) * 1000.0
     cpu_pct, ram_mb = get_cpu_and_ram_metrics(wall_start=wall_start, cpu_start=cpu_start)
