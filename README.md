@@ -31,7 +31,132 @@ configs/config.yaml    reference only; code reads config.py
 models/                 fraud_model.txt and threshold.txt after training
 ```
 
+<<<<<<< HEAD
 ## Setup
+=======
+---
+
+## 3. Dataset and features
+
+The Model uses the real ULB Credit Card Fraud dataset:
+
+- 284,807 real European card transactions.
+- PCA-anonymized features.
+- Severe class imbalance.
+- No synthetic fraud generation in the reported training/evaluation run.
+- 
+The model expects these 30 columns:
+
+```text
+Time, V1, V2, V3, V4, V5, V6, V7, V8, V9, V10,
+V11, V12, V13, V14, V15, V16, V17, V18, V19, V20,
+V21, V22, V23, V24, V25, V26, V27, V28, Amount
+```
+
+The original `Class` column is the target label and is not used as an inference feature.
+
+The `V1`–`V28` columns are PCA-transformed/anonymized features supplied by the dataset. They do not directly represent human-readable attributes such as merchant category, customer age, device type, or location.
+
+### Input validation
+
+- All 30 feature columns must be present.
+- Feature names must match the feature contract.
+- Missing and NaN values are rejected by the scoring entrypoint.
+- CSV and supported JSON input formats are accepted.
+
+---
+
+## 4. ML pipeline
+
+```text
+Load data
+   │
+   ▼
+Validate dataset and feature contract
+   │
+   ▼
+Remove target label from model inputs
+   │
+   ▼
+Chronological train / validation / test split
+   │
+   ▼
+Train LightGBM with early stopping
+   │
+   ▼
+Fit max-F1 threshold on validation data only
+   │
+   ▼
+Evaluate validation and test data
+   │
+   ▼
+Save model, threshold, reports, and benchmarks
+```
+
+### Data split
+
+| Split | Rows |
+|---|---:|
+| Train | 191,452 |
+| Validation | 40,225 |
+| Test | 53,130 |
+
+The split is chronological by `Time`.
+
+The validation region uses a stratified holdout within its chronological band to make early stopping less noisy while retaining the overall time-based evaluation design.
+
+The test set remains separate and is evaluated using the threshold selected from validation data.
+
+### Training configuration
+
+```text
+learning_rate       = 0.02
+num_leaves          = 96
+min_child_samples   = 50
+max_boost_rounds    = 3000
+early_stopping      = 300 rounds
+scale_pos_weight    = 10
+random_seed         = 42
+best_iteration      = 773
+```
+
+The decision threshold is selected using validation F1 and then frozen before test evaluation.
+
+---
+
+## 5. Results
+
+Results from the run on **2026-09-16** using an Intel Core i7-13650HX CPU:
+
+| Metric | Validation | Test |
+|---|---:|---:|
+| ROC-AUC | 0.9859 | **0.9899** |
+| AUC-PR | 0.8218 | **0.8006** |
+| Threshold | — | **0.6267** |
+| Precision | 0.85 | **0.90** |
+| Recall | 0.80 | **0.75** |
+| F1 | 0.82 | **0.82** |
+| Latency p99 | — | **0.55 ms** |
+| Best iteration / trees | — | **773 / 773** |
+
+Top features by gain:
+
+```text
+V14, V10, V12, V17, V25
+```
+
+### Latency requirement
+
+The recorded single-row p99 inference latency is **0.55 ms**, which is below the project's sub-100-ms target.
+
+This is a local model-inference benchmark. It does not represent complete end-to-end production latency, which would also include network overhead, feature retrieval, validation, logging, queueing, and service overhead.
+
+---
+
+## 6. Installation
+
+Create and activate a virtual environment:
+>>>>>>> e5411d5938699f3f7c41806399b9973b06ee87df
 
 ```bash
 python -m venv .venv
@@ -92,4 +217,59 @@ Plain asserts. No pytest required.
 
 ## Limits
 
+<<<<<<< HEAD
 One gradient-boosted tree model. No sequence model, no online learning, no serving layer. `distance_km` is a local flat-earth approximation, not haversine. Metrics reflect this merged public dataset, not a live card portfolio.
+=======
+or:
+
+```json
+{
+  "columns": ["Time", "V1", "V2", "V3", "Amount"],
+  "data": [[0, 1.2, -0.4, 0.8, 12.5]]
+}
+```
+
+The actual input must contain all 30 required features.
+
+### Override the threshold
+
+```bash
+.venv\Scripts\python.exe -m fraud_detection.predict in.csv --out out.csv --threshold 0.70
+```
+
+The scorer rejects missing or NaN features and exits with code `1` when input validation fails.
+
+If running directly from the `src` directory:
+
+```bash
+cd src
+python -m fraud_detection.predict ...
+```
+
+---
+
+## 8. Output format
+
+The scorer returns the original transaction fields with two additional columns:
+
+| Column | Meaning |
+|---|---|
+| `fraud_probability` | Model-estimated fraud score in `[0, 1]` |
+| `prediction` | `1` for fraud and `0` for legitimate according to the selected threshold |
+
+A probability is a model score, not a guarantee that a transaction is fraudulent.
+
+---
+
+## 9. Reproducibility and leakage controls
+
+- Random seed: `42`.
+- The split is deterministic.
+- The threshold is fitted on validation data only.
+- The test set is evaluated using the frozen validation threshold.
+- The target column `Class` is excluded from inference features.
+- No synthetic transactions are used for the reported ULB results.
+- The reported metrics should be regenerated whenever code, dependencies, data, feature handling, or configuration changes.
+
+---
+>>>>>>> e5411d5938699f3f7c41806399b9973b06ee87df
