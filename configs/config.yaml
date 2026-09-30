@@ -29,9 +29,7 @@ split:
 
 training:
   seed: 42
-  models:
-    - LightGBM
-    - XGBoost
+  model: LightGBM
   params:
     objective: binary
     metric: auc
@@ -42,5 +40,3 @@ training:
 output:
   model_path: models/fraud_model.txt
   threshold_path: models/threshold.txt
-  xgb_model_path: models/fraud_model_xgboost.json
-  xgb_threshold_path: models/threshold_xgboost.txt

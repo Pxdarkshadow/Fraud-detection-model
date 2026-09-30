@@ -1,6 +1,6 @@
-"""Fraud Detection Pipeline — LightGBM + XGBoost + SHAP explainability
+"""Fraud Detection Pipeline — LightGBM + SHAP explainability
 
-Single file: load -> features -> split -> train -> compare -> evaluate -> benchmark
+Single file: load -> features -> split -> train -> evaluate -> benchmark
 
 Dataset: data/fraud_merged.csv (Sparkov + BankSim + FDH Handbook, ~90k rows, 35% fraud).
   - Human-readable features: amount, category, merchant, location, time, demographics.
@@ -18,7 +18,6 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 import lightgbm as lgb
-import xgboost as xgb
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     roc_auc_score,
@@ -39,8 +38,6 @@ from .config import (
     MODEL_DIR,
     MODEL_PATH,
     THRESHOLD_PATH,
-    XGB_MODEL_PATH,
-    XGB_THRESHOLD_PATH,
 )
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -165,43 +162,6 @@ def train_lightgbm(train, val, feature_cols):
     return model
 
 
-def train_xgboost(train, val, feature_cols):
-    X_train, y_train = train[feature_cols], train[TARGET]
-    X_val, y_val = val[feature_cols], val[TARGET]
-
-    X_train = _xgb_encode(X_train)
-    X_val = _xgb_encode(X_val)
-
-    # dataset is 35% fraud — no artificial pos-weight needed
-    params = {
-        "objective": "binary:logistic",
-        "eval_metric": "auc",
-        "learning_rate": 0.02,
-        "max_depth": 6,
-        "min_child_weight": 50,
-        "subsample": 0.9,
-        "colsample_bytree": 0.8,
-        "tree_method": "hist",
-        "seed": RANDOM_SEED,
-        "verbosity": 0,
-    }
-
-    dtrain = xgb.DMatrix(X_train, label=y_train)
-    dval = xgb.DMatrix(X_val, label=y_val)
-
-    model = xgb.train(
-        params,
-        dtrain,
-        num_boost_round=5000,
-        evals=[(dval, "val")],
-        early_stopping_rounds=300,
-        verbose_eval=100,
-    )
-    best_iter = model.best_iteration if model.best_iteration is not None else "?"
-    print(f"  XGBoost best iteration: {best_iter}")
-    return model
-
-
 # ---------------------------------------------------------------------------
 # 5. THRESHOLD FITTING (validation only)
 # ---------------------------------------------------------------------------
@@ -240,20 +200,7 @@ def _binary_prf1(y_true, y_pred):
     return precision, recall, f1, cm
 
 
-def _xgb_encode(X):
-    """Integer-encode category columns for XGBoost DMatrix."""
-    X = X.copy()
-    for c in CATEGORICAL_COLS:
-        if c in X.columns:
-            X[c] = X[c].astype("category").cat.codes
-    return X
-
-
 def predict_proba(model, X):
-    # LightGBM Booster works directly with DataFrames.
-    # XGBoost Booster needs integer-encoded DMatrix.
-    if isinstance(model, xgb.Booster):
-        return model.predict(xgb.DMatrix(_xgb_encode(X)))
     return model.predict(X)
 
 
@@ -301,31 +248,6 @@ def evaluate(model, X, y_true, threshold, label="Test"):
     )
 
 
-def print_side_by_side(val_results, test_results):
-    for split_name, split_results in [("Validation", val_results), ("Test", test_results)]:
-        print(f"\n{'#' * 80}")
-        print(f"{split_name}: LightGBM vs XGBoost")
-        print(f"{'#' * 80}")
-
-        rows = [
-            ("ROC-AUC", "auc"),
-            ("AUC-PR", "auc_pr"),
-            ("Precision", "precision"),
-            ("Recall", "recall"),
-            ("F1", "f1"),
-        ]
-
-        lm, xgbm = split_results["LightGBM"], split_results["XGBoost"]
-        for title, field in rows:
-            print(
-                f"{title:<12}  LightGBM: {getattr(lm, field):.4f} | XGBoost: {getattr(xgbm, field):.4f}"
-            )
-
-        print(f"Threshold    LightGBM: {lm.threshold:.4f} | XGBoost: {xgbm.threshold:.4f}")
-
-        print("\nConfusion Matrix (actual 0/1):")
-        print("LightGBM:\n" + str(lm.confusion))
-        print("XGBoost:\n" + str(xgbm.confusion))
 # ---------------------------------------------------------------------------
 # 7. FEATURE IMPORTANCE (LightGBM gain)
 # ---------------------------------------------------------------------------
@@ -424,68 +346,35 @@ class FraudPipeline:
         train, val, test = chrono_split(df)
         del df
 
-        # Train both models on the same splits.
-        lgb_model = train_lightgbm(train, val, FEATURES)
-        xgb_model = train_xgboost(train, val, FEATURES)
+        # Train LightGBM.
+        model = train_lightgbm(train, val, FEATURES)
 
-        # Fit thresholds on validation ONLY (per-model).
-        lgb_val_prob = predict_proba(lgb_model, val[FEATURES])
-        xgb_val_prob = predict_proba(xgb_model, val[FEATURES])
-        lgb_threshold = fit_threshold(val[TARGET], lgb_val_prob)
-        xgb_threshold = fit_threshold(val[TARGET], xgb_val_prob)
-        print(f"\n  Validation threshold (LightGBM max-F1): {lgb_threshold:.4f}")
-        print(f"  Validation threshold (XGBoost  max-F1): {xgb_threshold:.4f}")
+        # Fit threshold on validation ONLY.
+        val_prob = predict_proba(model, val[FEATURES])
+        threshold = fit_threshold(val[TARGET], val_prob)
+        print(f"\n  Validation threshold (max-F1): {threshold:.4f}")
 
-        # Evaluate val + test with their frozen thresholds.
-        val_res_lgb = evaluate(
-            lgb_model, val[FEATURES], val[TARGET], lgb_threshold, label="Validation (LightGBM)"
-        )
-        val_res_xgb = evaluate(
-            xgb_model, val[FEATURES], val[TARGET], xgb_threshold, label="Validation (XGBoost)"
-        )
+        evaluate(model, val[FEATURES], val[TARGET], threshold, label="Validation")
+        evaluate(model, test[FEATURES], test[TARGET], threshold, label="Test")
 
-        test_res_lgb = evaluate(
-            lgb_model, test[FEATURES], test[TARGET], lgb_threshold, label="Test (LightGBM)"
-        )
-        test_res_xgb = evaluate(
-            xgb_model, test[FEATURES], test[TARGET], xgb_threshold, label="Test (XGBoost)"
-        )
+        print_feature_importance_lightgbm(model, FEATURES)
+        benchmark_latency(model, test[FEATURES])
+        benchmark_shap(model, test[FEATURES], FEATURES, top_k=5)
 
-        print_side_by_side(
-            val_results={"LightGBM": val_res_lgb, "XGBoost": val_res_xgb},
-            test_results={"LightGBM": test_res_lgb, "XGBoost": test_res_xgb},
-        )
-
-        # Feature importance and latency (per-model).
-        print_feature_importance_lightgbm(lgb_model, FEATURES)
-        benchmark_latency(lgb_model, test[FEATURES])
-        benchmark_latency(xgb_model, test[FEATURES])
-
-        # SHAP speed check on a single transaction.
-        # Note: explanation latency includes SHAP init + shap_values for a single row.
-        benchmark_shap(lgb_model, test[FEATURES], FEATURES, top_k=5)
-
-        # Save artifacts.
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        lgb_model.save_model(str(MODEL_PATH))
-        THRESHOLD_PATH.write_text(f"{lgb_threshold:.6f}")
-        print(f"\nLightGBM model saved to {MODEL_PATH}")
-        print(f"LightGBM threshold saved to {THRESHOLD_PATH} ({lgb_threshold:.6f})")
+        model.save_model(str(MODEL_PATH))
+        THRESHOLD_PATH.write_text(f"{threshold:.6f}")
+        print(f"\nModel saved to {MODEL_PATH}")
+        print(f"Threshold saved to {THRESHOLD_PATH} ({threshold:.6f})")
 
-        xgb_model.save_model(str(XGB_MODEL_PATH))
-        XGB_THRESHOLD_PATH.write_text(f"{xgb_threshold:.6f}")
-        print(f"XGBoost model saved to {XGB_MODEL_PATH}")
-        print(f"XGBoost threshold saved to {XGB_THRESHOLD_PATH} ({xgb_threshold:.6f})")
-
-        # Optional: show a tiny explanation example for the LightGBM model.
         try:
             ex = shap_top_k(
-                lgb_model,
+                model,
                 test[FEATURES].iloc[[0]],
                 FEATURES,
                 top_k=5,
             )[0]
-            print("\nExample SHAP (LightGBM, first test row):")
+            print("\nExample SHAP (first test row):")
             for f, v in zip(ex["features"], ex["shap_values"]):
                 print(f"  {f:<10} {v:+.6f}")
         except Exception as e:

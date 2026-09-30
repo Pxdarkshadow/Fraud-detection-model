@@ -15,8 +15,6 @@ MODEL_DIR = PROJECT_ROOT / "models"
 
 MODEL_PATH = MODEL_DIR / "fraud_model.txt"
 THRESHOLD_PATH = MODEL_DIR / "threshold.txt"
-XGB_MODEL_PATH = MODEL_DIR / "fraud_model_xgboost.json"
-XGB_THRESHOLD_PATH = MODEL_DIR / "threshold_xgboost.txt"
 
 # ---------------------------------------------------------------------------
 # Features & target
@@ -36,7 +34,7 @@ RAW_NUMERIC = [
     "merch_long",
 ]
 
-# Categorical features — label-encoded by XGB/LightGBM
+# Categorical features — LightGBM native categoricals
 CATEGORICAL_FEATURES = [
     "category",
     "merchant",

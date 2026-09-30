@@ -1,4 +1,4 @@
-"""Fraud scoring CLI + importable scorer (LightGBM or XGBoost + optional SHAP)."""
+"""Fraud scoring CLI + importable scorer (LightGBM + optional SHAP)."""
 
 import os
 import sys
@@ -10,7 +10,6 @@ import pandas as pd
 import numpy as np
 
 import lightgbm as lgb
-import xgboost as xgb
 
 from .config import (
     INPUT_COLS,
@@ -19,43 +18,17 @@ from .config import (
     CLASS_COL,
     MODEL_PATH,
     THRESHOLD_PATH,
-    XGB_MODEL_PATH,
-    XGB_THRESHOLD_PATH,
 )
 
 
 _shap_cache = {}
 
 
-def _is_xgb_model_path(path: str) -> bool:
-    # ponytail: heuristic based on extension; upgrade path: store a small model metadata file.
-    p = str(path).lower()
-    return p.endswith(".json") or "xgboost" in p
-
-
 def load_model(path=MODEL_PATH):
     path = str(path)
     if not os.path.isfile(path):
         raise FileNotFoundError(f"Model not found: {path}")
-
-    if _is_xgb_model_path(path):
-        model = xgb.Booster()
-        model.load_model(path)
-        return model
-
     return lgb.Booster(model_file=path)
-
-
-def default_threshold_for_model(model_path):
-    model_path = str(model_path)
-    if _is_xgb_model_path(model_path):
-        try:
-            with open(XGB_THRESHOLD_PATH) as f:
-                return float(f.read().strip())
-        except (FileNotFoundError, ValueError):
-            return 0.5
-
-    return default_threshold()
 
 
 def default_threshold():
@@ -95,15 +68,6 @@ def engineer_features(df):
     return df
 
 
-def _xgb_encode(X, feature_cols):
-    """Encode categories to integers for XGBoost; returns a new DataFrame slice."""
-    X = X[feature_cols].copy()
-    for c in X.columns:
-        if isinstance(X[c].dtype, pd.CategoricalDtype) or str(X[c].dtype) == "category":
-            X[c] = X[c].cat.codes
-    return X
-
-
 def predict(df, threshold=None, model=None):
     if isinstance(df, (str, os.PathLike)):
         df = pd.read_csv(df) if str(df).endswith(".csv") else pd.read_json(df)
@@ -111,12 +75,7 @@ def predict(df, threshold=None, model=None):
     model = load_model() if model is None else model
     df = engineer_features(df)
     threshold = default_threshold() if threshold is None else threshold
-
-    if isinstance(model, xgb.Booster):
-        probs = model.predict(xgb.DMatrix(_xgb_encode(df, FEATURES)))
-    else:
-        probs = model.predict(df[FEATURES])
-
+    probs = model.predict(df[FEATURES])
     df["fraud_probability"] = probs
     df["prediction"] = (probs >= threshold).astype(int)
     return df
@@ -168,16 +127,11 @@ def explain_predictions(model, df: pd.DataFrame, top_k=5, feature_cols=None):
     df = engineer_features(df)
 
     t0 = time.perf_counter()
-    if isinstance(model, xgb.Booster):
-        _ = model.predict(xgb.DMatrix(_xgb_encode(df, feature_cols)))
-        X_shap = _xgb_encode(df, feature_cols)
-    else:
-        _ = model.predict(df[feature_cols])
-        X_shap = df[feature_cols]
+    _ = model.predict(df[feature_cols])
     inference_ms = (time.perf_counter() - t0) * 1000
 
     t0 = time.perf_counter()
-    explanations = _explain_shap_top_k(model, X_shap, feature_cols, top_k=top_k)
+    explanations = _explain_shap_top_k(model, df[feature_cols], feature_cols, top_k=top_k)
     explanation_ms = (time.perf_counter() - t0) * 1000
 
     top_features = []
@@ -220,18 +174,10 @@ def main():
         model = load_model(args.model)
         df = engineer_features(df)
 
-        threshold = (
-            args.threshold
-            if args.threshold is not None
-            else default_threshold_for_model(args.model)
-        )
+        threshold = args.threshold if args.threshold is not None else default_threshold()
 
-        # Inference (timed separately when --explain is enabled)
         t0 = time.perf_counter()
-        if isinstance(model, xgb.Booster):
-            probs = model.predict(xgb.DMatrix(_xgb_encode(df, FEATURES)))
-        else:
-            probs = model.predict(df[FEATURES])
+        probs = model.predict(df[FEATURES])
         inference_ms = (time.perf_counter() - t0) * 1000
 
         df["fraud_probability"] = probs
