@@ -1,6 +1,6 @@
 # Fraud Detection Model
 
-A tabular fraud classifier. One LightGBM model scores transactions from human-readable features (amount, merchant, location, time, demographics). No web UI. Training and batch scoring are command-line only.
+A tabular fraud classifier. One LightGBM model scores transactions from human-readable features (amount, merchant, location, time, demographics). 
 
 The dataset is a merged CSV of public fraud sources, rebalanced to about 35% fraud. The split is chronological on `tx_datetime`. The decision threshold is the F1 maximum on the validation slice and is never fitted on the test slice.
 
