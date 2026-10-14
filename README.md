@@ -31,7 +31,6 @@ configs/config.yaml    reference only; code reads config.py
 models/                 fraud_model.txt and threshold.txt after training
 ```
 
-<<<<<<< HEAD
 ## Setup
 =======
 ---
@@ -272,4 +271,3 @@ A probability is a model score, not a guarantee that a transaction is fraudulent
 - The reported metrics should be regenerated whenever code, dependencies, data, feature handling, or configuration changes.
 
 ---
->>>>>>> e5411d5938699f3f7c41806399b9973b06ee87df
