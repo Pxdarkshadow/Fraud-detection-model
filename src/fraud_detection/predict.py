@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 
 import lightgbm as lgb
+import joblib
 
 from .config import (
     INPUT_COLS,
@@ -18,10 +19,14 @@ from .config import (
     CLASS_COL,
     MODEL_PATH,
     THRESHOLD_PATH,
+    ISO_FOREST_MODEL_PATH,
+    ISO_FOREST_NUMERIC_COLS,
+    RISK_LEVELS,
 )
 
 
 _shap_cache = {}
+_iso_model_cache = None
 
 
 def load_model(path=MODEL_PATH):
@@ -29,6 +34,20 @@ def load_model(path=MODEL_PATH):
     if not os.path.isfile(path):
         raise FileNotFoundError(f"Model not found: {path}")
     return lgb.Booster(model_file=path)
+
+
+def load_isolation_forest(path=ISO_FOREST_MODEL_PATH):
+    global _iso_model_cache
+    if _iso_model_cache is not None:
+        return _iso_model_cache
+    path = str(path)
+    if os.path.isfile(path):
+        try:
+            _iso_model_cache = joblib.load(path)
+            return _iso_model_cache
+        except Exception:
+            return None
+    return None
 
 
 def default_threshold():
@@ -53,7 +72,18 @@ def engineer_features(df):
         df.drop(columns=[CLASS_COL], inplace=True)
 
     if "amount" in df.columns:
-        df["amount_log1p"] = np.log1p(df["amount"])
+        df["amount_log1p"] = np.log1p(pd.to_numeric(df["amount"], errors="coerce").clip(lower=0.0)).astype("float32")
+
+    # Cyclical hour encoding
+    if "hour" in df.columns:
+        hour = pd.to_numeric(df["hour"], errors="coerce").fillna(12.0)
+    elif "hour_of_day" in df.columns:
+        hour = pd.to_numeric(df["hour_of_day"], errors="coerce").fillna(12.0)
+    else:
+        hour = pd.Series(12.0, index=df.index, dtype="float32")
+
+    df["hour_sin"] = np.sin(2.0 * np.pi * hour / 24.0).astype("float32")
+    df["hour_cos"] = np.cos(2.0 * np.pi * hour / 24.0).astype("float32")
 
     if all(x in df.columns for x in ["lat", "long", "merch_lat", "merch_long"]):
         dlat = df["lat"] - df["merch_lat"]
@@ -65,6 +95,17 @@ def engineer_features(df):
         if col in df.columns:
             df[col] = df[col].astype("category")
 
+    # Isolation Forest features if model is available
+    iso_model = load_isolation_forest()
+    if iso_model is not None:
+        try:
+            iso_cols = [c for c in ISO_FOREST_NUMERIC_COLS if c in df.columns]
+            X = df[iso_cols].fillna(0.0).astype("float32")
+            df["iso_forest_score"] = (-iso_model.score_samples(X)).astype("float32")
+            df["iso_forest_outlier_flag"] = (iso_model.predict(X) == -1).astype("int8")
+        except Exception:
+            pass
+
     return df
 
 
@@ -73,12 +114,26 @@ def predict(df, threshold=None, model=None):
         df = pd.read_csv(df) if str(df).endswith(".csv") else pd.read_json(df)
     validate_input(df)
     model = load_model() if model is None else model
-    df = engineer_features(df)
+    df_eng = engineer_features(df)
     threshold = default_threshold() if threshold is None else threshold
-    probs = model.predict(df[FEATURES])
+
+    feature_names = model.feature_name()
+    for col in feature_names:
+        if col not in df_eng.columns:
+            df_eng[col] = 0.0
+
+    probs = model.predict(df_eng[feature_names])
     df["fraud_probability"] = probs
     df["prediction"] = (probs >= threshold).astype(int)
     return df
+
+
+def risk_from_prob(prob: float) -> tuple[str, str, str]:
+    """Map fraud probability to (risk_level, color, recommended_action)."""
+    for threshold, level, color, action in RISK_LEVELS:
+        if prob >= threshold:
+            return level, color, action
+    return "Low", "GREEN", "Approve"
 
 
 def _read_input(path):
@@ -123,15 +178,18 @@ def _explain_shap_top_k(model, X: pd.DataFrame, feature_cols, top_k=5):
 
 
 def explain_predictions(model, df: pd.DataFrame, top_k=5, feature_cols=None):
-    feature_cols = feature_cols or FEATURES
-    df = engineer_features(df)
+    feature_cols = feature_cols or model.feature_name()
+    df_eng = engineer_features(df)
+    for col in feature_cols:
+        if col not in df_eng.columns:
+            df_eng[col] = 0.0
 
     t0 = time.perf_counter()
-    _ = model.predict(df[feature_cols])
+    _ = model.predict(df_eng[feature_cols])
     inference_ms = (time.perf_counter() - t0) * 1000
 
     t0 = time.perf_counter()
-    explanations = _explain_shap_top_k(model, df[feature_cols], feature_cols, top_k=top_k)
+    explanations = _explain_shap_top_k(model, df_eng[feature_cols], feature_cols, top_k=top_k)
     explanation_ms = (time.perf_counter() - t0) * 1000
 
     top_features = []

@@ -1,19 +1,23 @@
 .venv/
+venv/
 __pycache__/
 *.pyc
-data/creditcard.csv
-data/Fraud.csv
-data/PS_*.csv
-data/*_identity.csv
-data/*_transaction.csv
-data/synthetic_fraud_transactions.csv
-data/sample_submission.csv
-models/fraud_model.txt
-models/threshold.txt
+
+# Datasets & raw files
+data/
+data/*.csv
+dataset/
+dataset/*.csv
+*.csv
+
+# Models & trained artifacts
+models/*.txt
+models/*.joblib
+models/*.pkl
+
 *.egg-info/
 .pytest_cache/
-out.csv
 reports/*.csv
 reports/*.json
 .benchmarks/
-data/*.csv
+

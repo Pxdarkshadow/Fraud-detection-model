@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Run the fraud detection training pipeline.
+r"""Run the fraud detection training pipeline.
 
 Usage:
     .venv\Scripts\python.exe scripts/run_pipeline.py

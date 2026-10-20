@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Run the test suite.
+r"""Run the test suite.
 
 Usage:
     .venv\Scripts\python.exe scripts/run_tests.py
