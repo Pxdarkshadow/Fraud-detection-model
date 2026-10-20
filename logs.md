@@ -1,7 +1,6 @@
 # Project Engineering Logs
 
-This log documents all technical changes, architecture enhancements, model iterations, and pipeline updates. Both team members contribute here to maintain a shared, synchronized record of project evolution.
-
+This log documents all technical changes, architecture enhancements, model iterations, and pipeline updates.
 ---
 
 ## [2026-10-20 22:15:00 IST] - Architecture Unification & Hybrid Engine Integration
